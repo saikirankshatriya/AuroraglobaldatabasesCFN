@@ -1,0 +1,147 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Aurora Global database primary region Mysql
+
+Parameters:
+
+  VPCId:
+    Type: String
+  InstanceType:
+    Default: db.r6g.large
+    Type: String
+    AllowedValues:
+      - db.r6g.large
+      - db.r6g.2xlarge
+  ReaderInstanceType:
+    Default: db.r6g.2xlarge
+    Type: String
+    AllowedValues:
+      - db.r6g.large
+      - db.r6g.2xlarge
+  DatabaseName:
+    Default: gdbdatabase
+    Type: String
+  MasterPassword:
+    MinLength: 8
+    NoEcho: 'true'
+    Type: String
+  SubnetGroup:
+    Type: String  
+  MinorVersionUpgrade:
+    Default: 'No'
+    Type: String
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+  EngineVersion:
+    Default: '8.0.mysql_aurora.3.03.2'
+    Type: String
+    AllowedValues:
+      - "5.7.mysql_aurora.2.12.0"
+      - "8.0.mysql_aurora.3.03.0"
+      - "8.0.mysql_aurora.3.03.1"
+      - "8.0.mysql_aurora.3.03.2"
+      - "8.0.mysql_aurora.3.04.0"
+  MysqlEngineMode:
+    Default: 'provisioned'
+    Type: String
+    AllowedValues:
+      - 'global'
+      - 'provisioned'
+  ClusterName:
+    Default: aurora-cluster
+    Type: String
+  GlobalClusterIdentifier:
+    Default: aurora-globaldb-cluster
+    Type: String
+
+Resources:
+
+  GlobalDBCluster:
+    DependsOn:
+      - DBCluster
+    Type: AWS::RDS::GlobalCluster
+    Properties:
+      GlobalClusterIdentifier: !Ref GlobalClusterIdentifier
+      SourceDBClusterIdentifier: !Ref DBCluster
+
+  DBParameterGroupupgrade:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: aurora-mysql8.0
+      Parameters:
+        max_connections: 5000
+      Description: DBParamterGroup    
+
+  DBCluster:
+    DependsOn: SecurityGroup
+    Type: AWS::RDS::DBCluster
+    Properties:
+      DBClusterIdentifier: !Ref ClusterName
+      DBClusterParameterGroupName: !Ref DBClusterParameterGroup
+      DBSubnetGroupName: !Ref SubnetGroup
+      DatabaseName: !Ref DatabaseName
+      DeletionProtection: false
+      Engine: aurora-mysql
+      EngineVersion: !Ref EngineVersion
+      EngineMode: !Ref MysqlEngineMode
+      MasterUsername: admin
+      MasterUserPassword: !Ref MasterPassword
+      SourceRegion: us-west-1
+      Port: 3306
+      StorageEncrypted: false
+      VpcSecurityGroupIds:
+        - !Ref SecurityGroup
+
+  DBInstance1:
+    DependsOn: DBCluster 
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: True
+      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceIdentifier: !Sub '${ClusterName}-1'
+      DBInstanceClass: !Ref InstanceType
+      DBParameterGroupName: !Ref DBParameterGroup
+      DBSubnetGroupName: !Ref SubnetGroup
+      Engine: aurora-mysql
+      EngineVersion: !Ref EngineVersion
+      PubliclyAccessible: false
+
+  DBInstance2:
+    DependsOn: DBCluster
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: True
+      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceIdentifier: !Sub '${ClusterName}-2'
+      DBInstanceClass: !Ref ReaderInstanceType
+      DBParameterGroupName: !Ref DBParameterGroup
+      DBSubnetGroupName: !Ref SubnetGroup
+      Engine: aurora-mysql
+      EngineVersion: !Ref EngineVersion
+      PubliclyAccessible: false
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCId
+      GroupDescription: Access to Aurora global database
+      SecurityGroupIngress:
+        - ToPort: 3306
+          FromPort: 3306
+          IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${DatabaseName}-security-group
+
+Outputs:
+  GlobalDBCluster:
+    Value: !Ref GlobalDBCluster
+  DBEndpoint:
+    Value: !GetAtt DBCluster.Endpoint.Address
+  DBPort:
+    Value: !GetAtt DBCluster.Endpoint.Port

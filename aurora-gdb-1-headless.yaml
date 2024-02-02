@@ -1,0 +1,78 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Aurora Global database primary region Mysql
+
+Parameters:
+
+  VPCId:
+    Type: String
+  InstanceType:
+    Default: db.r6g.large
+    Type: String
+    AllowedValues:
+      - db.r6g.large
+      - db.r6g.2xlarge
+  DatabaseName:
+    Default: gdbdatabase
+    Type: String
+  SubnetGroup:
+    Type: String  
+  MinorVersionUpgrade:
+    Default: 'Yes'
+    Type: String
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+  EngineVersion:
+    Default: '5.7.mysql_aurora.2.12.0'
+    Type: String
+    AllowedValues:
+      - "5.7.mysql_aurora.2.12.0"
+      - "8.0.mysql_aurora.3.03.0"
+      - "8.0.mysql_aurora.3.03.1"
+      - "8.0.mysql_aurora.3.03.2"
+      - "8.0.mysql_aurora.3.04.0"
+  ClusterName:
+    Default: aurora-cluster-headless
+    Type: String
+  GlobalClusterIdentifier:
+    Default: aurora-globaldb-cluster
+    Type: String
+
+Resources:
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCId
+      GroupDescription: Access to database
+      SecurityGroupIngress:
+        - ToPort: 3306
+          FromPort: 3306
+          IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${DatabaseName}-security-group
+
+  DBCluster:
+    DependsOn: SecurityGroup
+    Type: AWS::RDS::DBCluster
+    Properties:
+      DBClusterIdentifier: !Ref ClusterName
+      DBSubnetGroupName: !Ref SubnetGroup
+      GlobalClusterIdentifier: !Ref GlobalClusterIdentifier
+      DeletionProtection: false
+      Engine: aurora-mysql
+      EngineVersion: !Ref EngineVersion
+      SourceRegion: us-west-2
+      Port: 3306
+      StorageEncrypted: false
+      VpcSecurityGroupIds:
+        - !Ref SecurityGroup
+
+Outputs:
+  DBEndpoint:
+    Value: !GetAtt DBCluster.Endpoint.Address
+  DBPort:
+    Value: !GetAtt DBCluster.Endpoint.Port
